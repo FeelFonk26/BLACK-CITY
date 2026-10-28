@@ -122,7 +122,7 @@ export default function App() {
       } catch {
         if (!cancelled) {
           setApiStatus("offline");
-          setApiError("Сервер недоступен. Серверные раунды временно отключены.");
+          setApiError("Сервер недоступен. Играешь в локальном демо; баланс не сохраняется.");
         }
       }
     }
@@ -132,7 +132,9 @@ export default function App() {
 
   const selectedGame = games.find((game) => game.mode === active)!;
   const numericStake = Number(stake);
-  const canPlay = Number.isSafeInteger(numericStake) && numericStake >= 1 && numericStake <= 1000000 && numericStake <= balance && (!apiBase || (apiStatus === "online" && Boolean(token)));
+  const serverReady = Boolean(apiBase && apiStatus === "online" && token);
+  const demoFallback = !apiBase || apiStatus === "offline";
+  const canPlay = Number.isSafeInteger(numericStake) && numericStake >= 1 && numericStake <= 1000000 && numericStake <= balance && (serverReady || demoFallback);
 
   async function playRound() {
     if (!canPlay || inFlight.current) return;
@@ -140,7 +142,7 @@ export default function App() {
     setIsPlaying(true);
     setApiError(null);
     try {
-      if (apiBase) {
+      if (serverReady) {
         if (!token) {
           setApiError("Гостевой аккаунт ещё подключается. Попробуй через секунду.");
           return;
@@ -208,10 +210,10 @@ export default function App() {
       </section>
       <section className="games-section" id="games">
         <div className="section-heading"><div><p className="eyebrow">ВЫБИРАЙ СВОЙ РЕЖИМ</p><h2>ИГРОВАЯ <span>СЕТКА</span></h2></div><p>12 режимов.<br />Один город.</p></div>
-        <div className="demo-wallet"><div><span>ДЕМО-БАЛАНС</span><strong>{balance.toLocaleString("ru-RU")} <small>кредитов</small></strong></div><div><span>СЫГРАНО РАУНДОВ</span><strong>{rounds}</strong></div><p>{apiBase ? "Серверный режим: баланс и история раундов хранятся на сервере." : "Демо-режим: баланс хранится только до перезагрузки страницы. Для серверной игры подключается VPS."}</p></div>
+        <div className="demo-wallet"><div><span>ДЕМО-БАЛАНС</span><strong>{balance.toLocaleString("ru-RU")} <small>кредитов</small></strong></div><div><span>СЫГРАНО РАУНДОВ</span><strong>{rounds}</strong></div><p>{serverReady ? "Серверный режим: баланс и история раундов хранятся на сервере." : apiBase && apiStatus === "offline" ? "API недоступно: локальное демо. Баланс сбросится после перезагрузки и не сохраняется на сервере." : "Демо-режим: баланс хранится только до перезагрузки страницы. Для серверной игры подключается VPS."}</p></div>
         <div className="game-grid">{games.map((game, index) => <button key={game.mode} className={"game-card " + (active === game.mode ? "game-card-active" : "")} onClick={() => { setActive(game.mode); setResult(null); }} type="button" aria-pressed={active === game.mode}><span className="game-number">{String(index + 1).padStart(2, "0")}</span><span className="game-symbol">{game.symbol}</span><span className="game-title">{game.title}</span><span className="game-subtitle">{game.subtitle}</span><span className="game-arrow">↗</span></button>)}</div>
         <section className="game-panel" aria-live="polite">
-          <div className="game-panel-heading"><div><p className="eyebrow">ДЕМО-РАУНД</p><h3>{selectedGame.symbol} {selectedGame.title}</h3><p>{selectedGame.subtitle}</p></div><span className="demo-label">{apiBase ? "ВИРТУАЛЬНЫЕ КРЕДИТЫ · API" : "ЛОКАЛЬНОЕ ДЕМО"}</span></div>
+          <div className="game-panel-heading"><div><p className="eyebrow">ДЕМО-РАУНД</p><h3>{selectedGame.symbol} {selectedGame.title}</h3><p>{selectedGame.subtitle}</p></div><span className="demo-label">{serverReady ? "ВИРТУАЛЬНЫЕ КРЕДИТЫ · API" : "ЛОКАЛЬНОЕ ДЕМО"}</span></div>
           {active === "COINFLIP" && <div className="coin-choice"><span>Выбери сторону</span>{(["Орёл", "Решка"] as const).map((side) => <button key={side} type="button" className={coinSide === side ? "choice-active" : ""} onClick={() => { setCoinSide(side); setResult(null); }}>{side}</button>)}</div>}
           <div className="game-controls"><label htmlFor="stake">Ставка</label><input id="stake" type="number" min="1" max="1000000" step="1" value={stake} onChange={(event) => { setStake(event.target.value); setResult(null); }} /><div className="quick-stakes">{[100, 500, 1000].map((value) => <button key={value} type="button" onClick={() => { setStake(String(value)); setResult(null); }}>{value.toLocaleString("ru-RU")}</button>)}</div><button className="play-button" type="button" onClick={playRound} disabled={!canPlay || isPlaying}>{isPlaying ? "ОБРАБОТКА…" : "ИГРАТЬ"} <span>→</span></button></div>
           {!canPlay && <p className="validation-note">{numericStake > balance ? "Недостаточно виртуальных кредитов." : apiBase && apiStatus !== "online" ? "Ожидание подключения к игровому серверу." : "Введи целую ставку от 1 до 1 000 000."}</p>}
