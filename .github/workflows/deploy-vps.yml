@@ -66,25 +66,47 @@ jobs:
             echo "  StrictHostKeyChecking yes"
           } >> ~/.ssh/config
 
-      - name: Transfer private environment file
+      - name: Verify dedicated VPS deployment prerequisites
+        if: steps.validate.outputs.ready == 'true'
+        run: |
+          set -eu
+          ssh black-city-platform 'set -eu
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker is not installed on this VPS. Install Docker Engine and the Compose plugin before retrying."
+              exit 2
+            fi
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "Docker Compose plugin is unavailable for this SSH user."
+              exit 2
+            fi
+            APP_DIR=/opt/black-city-platform
+            if [ -e "$APP_DIR" ] && [ ! -d "$APP_DIR/.git" ] && [ -n "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+              echo "$APP_DIR exists and is not a Git checkout; refusing to overwrite existing files."
+              exit 3
+            fi
+            if [ -d "$APP_DIR/.git" ] && [ -n "$(git -C "$APP_DIR" status --porcelain)" ]; then
+              echo "$APP_DIR has local changes; refusing to overwrite them."
+              exit 3
+            fi
+          '
+
+      - name: Transfer private environment file securely
         if: steps.validate.outputs.ready == 'true'
         env:
           VPS_APP_ENV: ${{ secrets.VPS_APP_ENV }}
         run: |
           set -eu
-          umask 077
-          printf '%s' "$VPS_APP_ENV" > .platform-deploy.env
-          scp .platform-deploy.env black-city-platform:/tmp/black-city-platform.env
-          rm -f .platform-deploy.env
+          printf '%s' "$VPS_APP_ENV" | ssh black-city-platform 'umask 077; cat > /tmp/black-city-platform.env'
 
       - name: Deploy isolated platform services
         if: steps.validate.outputs.ready == 'true'
         run: |
           ssh black-city-platform 'set -eu
+            trap "rm -f /tmp/black-city-platform.env" EXIT
             APP_DIR=/opt/black-city-platform
-            if ! command -v docker >/dev/null 2>&1; then
-              echo "Docker is not installed on this VPS. Install Docker Engine and the Compose plugin before retrying."
-              exit 2
+            if [ ! -f /tmp/black-city-platform.env ]; then
+              echo "Temporary deployment environment file is missing."
+              exit 4
             fi
             if [ ! -d "$APP_DIR/.git" ]; then
               git clone --branch main https://github.com/FeelFonk26/BLACK-CITY.git "$APP_DIR"
@@ -94,7 +116,6 @@ jobs:
               git -C "$APP_DIR" pull --ff-only origin main
             fi
             install -m 600 /tmp/black-city-platform.env "$APP_DIR/.env"
-            rm -f /tmp/black-city-platform.env
             cd "$APP_DIR"
             docker compose up -d --build
             docker compose ps
