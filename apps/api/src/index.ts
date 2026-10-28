@@ -155,15 +155,14 @@ app.post("/api/v1/rounds", async (request, reply) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existing = await client.query("SELECT id, mode, stake, payout, status FROM game_rounds WHERE player_id = $1 AND idempotency_key = $2", [playerId, idempotencyKey]);
-    if (existing.rowCount) {
-      const wallet = await client.query("SELECT balance FROM wallets WHERE player_id = $1", [playerId]);
-      await client.query("COMMIT");
-      return { round: existing.rows[0], balance: Number(wallet.rows[0]?.balance ?? 0), idempotentReplay: true };
-    }
     const walletResult = await client.query("SELECT balance FROM wallets WHERE player_id = $1 FOR UPDATE", [playerId]);
     if (!walletResult.rowCount) { await client.query("ROLLBACK"); return reply.code(404).send({ error: "player_not_found" }); }
     const balance = Number(walletResult.rows[0]?.balance);
+    const existing = await client.query("SELECT id, mode, stake, payout, status FROM game_rounds WHERE player_id = $1 AND idempotency_key = $2", [playerId, idempotencyKey]);
+    if (existing.rowCount) {
+      await client.query("COMMIT");
+      return { round: existing.rows[0], balance, idempotentReplay: true };
+    }
     if (balance < body.stake) { await client.query("ROLLBACK"); return reply.code(409).send({ error: "insufficient_balance", balance }); }
     const balanceAfterStake = balance - body.stake;
     const balanceAfter = balanceAfterStake + payout;
