@@ -37,7 +37,7 @@ function playDemoRound(mode: GameMode, stake: number, coinSide: "Орёл" | "Р
     }
     case "PLINKO": {
       const slots = [0, 0.5, 0.5, 1, 1, 1.5, 2, 3, 5];
-      const multiplier = slots[random(slots.length)];
+      const multiplier = slots[random(slots.length)] ?? 0;
       return multiplier > 0 ? win("Множитель ×" + multiplier, "Шарик попал в этот сектор.", multiplier) : lose("Шарик попал в ×0", "В этом секторе выплата равна нулю.");
     }
     case "WHEEL":
@@ -45,7 +45,7 @@ function playDemoRound(mode: GameMode, stake: number, coinSide: "Орёл" | "Р
     case "WHEEL_MEGA":
     case "CRAZY_TIME": {
       const sectors = mode === "WHEEL_MINI" ? [0, 0.5, 1, 1.5, 2] : mode === "WHEEL_MEGA" ? [0, 0, 1, 2, 3, 5, 10] : mode === "CRAZY_TIME" ? [0, 1, 2, 2, 5, 10, 20] : [0, 0.5, 1, 2, 3, 5];
-      const multiplier = sectors[random(sectors.length)];
+      const multiplier = sectors[random(sectors.length)] ?? 0;
       return multiplier > 0 ? win("Колесо: ×" + multiplier, "Раунд завершён. Выплата рассчитана по сектору.", multiplier) : lose("Колесо: Банкрот", "Выплата в этом секторе равна нулю.");
     }
     case "MINES": {
