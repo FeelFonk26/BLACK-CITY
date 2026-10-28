@@ -80,7 +80,7 @@ export default function App() {
   const [rounds, setRounds] = useState(0);
   const [token, setToken] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
-  const apiBase = import.meta.env.VITE_API_URL?.replace(/\\/$/, "");
+  const apiBase = import.meta.env.VITE_API_URL?.endsWith("/") ? import.meta.env.VITE_API_URL.slice(0, -1) : import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     if (!apiBase) {
