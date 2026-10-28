@@ -25,3 +25,5 @@ jobs:
         run: npm run typecheck
       - name: Test
         run: npm test
+      - name: Build web app
+        run: npm run build --workspace @black-city/web
