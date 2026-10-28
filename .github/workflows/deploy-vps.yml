@@ -39,6 +39,21 @@ jobs:
             echo "::notice::VPS deployment skipped; configure VPS_HOST, VPS_USER, VPS_SSH_KEY, and VPS_APP_ENV when the dedicated VPS is ready."
             exit 0
           fi
+          required_keys="POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD JWT_SECRET CORS_ORIGINS"
+          for key in $required_keys; do
+            if ! printf '%s\n' "$VPS_APP_ENV" | grep -Eq "^${key}=.+$"; then
+              echo "::error::VPS_APP_ENV is missing a required non-empty key: $key"
+              exit 1
+            fi
+          done
+          if ! printf '%s\n' "$VPS_APP_ENV" | awk -F= '/^JWT_SECRET=/ { sub(/^[^=]*=/, ""); if (length($0) >= 32) valid=1 } END { exit !valid }'; then
+            echo "::error::JWT_SECRET in VPS_APP_ENV must be at least 32 characters."
+            exit 1
+          fi
+          if ! printf '%s\n' "$VPS_APP_ENV" | awk -F= '/^POSTGRES_PASSWORD=/ { sub(/^[^=]*=/, ""); if ($0 ~ /^[A-Za-z0-9_-]+$/) valid=1 } END { exit !valid }'; then
+            echo "::error::POSTGRES_PASSWORD must use only letters, digits, underscore, or hyphen because it is embedded in DATABASE_URL."
+            exit 1
+          fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Configure SSH
