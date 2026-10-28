@@ -32,6 +32,18 @@ The database is persisted in a dedicated Docker volume named `black_city_platfor
 
 The API currently creates guest web accounts, issues signed 30-day tokens, validates stakes on the server, locks wallet rows in PostgreSQL transactions, and records balance changes in a ledger. The browser must use HTTPS and send an idempotency key for each round. VK launch verification and account linking are separate follow-up work; do not treat an unverified VK launch payload as identity.
 
+## Reusing an existing HTTPS domain safely
+
+If the VPS already has a valid TLS domain and an Nginx server block, a new domain is not required. You can proxy the API through the same hostname using `/health` and `/api/` while keeping existing payment paths intact.
+
+- First confirm the chosen hostname's current Nginx configuration and TLS certificate.
+- Copy only the location blocks from `deploy/nginx-existing-domain-locations.conf.example` into the existing HTTPS server block, before its `location /` block.
+- Do not enable the example file as a separate Nginx site or create a duplicate `server_name` block.
+- Preserve any existing `/pay/` and payment-notification locations.
+- Test with `nginx -t` before reloading Nginx. Verify the website and payment URLs again after the reload.
+
+For the current VPS, the existing hostname is `blackcytigame.duckdns.org`. Its `/pay/` and `/yoomoney/notify` routes must remain unchanged. Set the Pages variable `VITE_API_URL` to `https://blackcytigame.duckdns.org` only after the API is running and the proxy locations are verified.
+
 ## GitHub Actions deployment
 
 After the first manual setup or once the VPS is ready, configure these **repository secrets** under GitHub → Settings → Secrets and variables → Actions → New repository secret:
