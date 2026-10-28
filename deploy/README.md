@@ -31,3 +31,17 @@ CORS_ORIGINS=https://feelfonk26.github.io
 The database is persisted in a dedicated Docker volume named `black_city_platform_pgdata`. Do not run `docker compose down -v` on a live installation because it removes that database volume.
 
 The API currently creates guest web accounts, issues signed 30-day tokens, validates stakes on the server, locks wallet rows in PostgreSQL transactions, and records balance changes in a ledger. The browser must use HTTPS and send an idempotency key for each round. VK launch verification and account linking are separate follow-up work; do not treat an unverified VK launch payload as identity.
+
+## GitHub Actions deployment
+
+After the first manual setup or once the VPS is ready, configure these **repository secrets** under GitHub → Settings → Secrets and variables → Actions → New repository secret:
+
+- `VPS_HOST`: VPS public IP or hostname
+- `VPS_USER`: SSH account that can run Docker
+- `VPS_SSH_KEY`: private SSH key for that account (never paste it into chat or commit it)
+- `VPS_APP_ENV`: the complete multiline environment file shown above, with real unique secrets
+- `VPS_SSH_PORT`: optional; defaults to `22`
+
+The deploy workflow targets only `/opt/black-city-platform`. It does not touch `/opt/black-city` or the old bot's data. It requires Docker Engine and the Docker Compose plugin already installed.
+
+After the API has a public HTTPS hostname, add a **repository variable** under Settings → Secrets and variables → Actions → Variables named `VITE_API_URL`, set to that HTTPS URL (for example, `https://api.example.com`). The Pages build reads this variable. The VPS API still needs a TLS reverse proxy for that hostname; do not point the website at an unencrypted HTTP API because browsers block mixed content.
