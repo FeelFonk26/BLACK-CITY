@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-black_city_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-black_city}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - black_city_platform_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-black_city} -d ${POSTGRES_DB:-black_city_platform}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [platform-private]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-black_city}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-black_city_platform}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env}
+    ports:
+      - "127.0.0.1:${API_PORT:-4000}:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "npm run migrate --workspace=@black-city/api && npm run start --workspace=@black-city/api"]
+    networks: [platform-private]
+
+volumes:
+  black_city_platform_pgdata:
+
+networks:
+  platform-private:
+    driver: bridge
