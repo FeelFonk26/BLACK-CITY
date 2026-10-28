@@ -13,10 +13,10 @@ try {
     .sort();
 
   for (const filename of migrations) {
-    const version = filename.replace(/\\.sql$/, "");
+    const version = filename.replace(/\.sql$/, "");
     const alreadyApplied = await pool.query("SELECT version FROM schema_migrations WHERE version = $1", [version]);
     if (alreadyApplied.rowCount) {
-      process.stdout.write(`Migration ${version} already applied\\n`);
+      process.stdout.write(`Migration ${version} already applied\n`);
       continue;
     }
 
@@ -27,7 +27,7 @@ try {
       await client.query(sql);
       await client.query("INSERT INTO schema_migrations (version) VALUES ($1)", [version]);
       await client.query("COMMIT");
-      process.stdout.write(`Applied migration ${version}\\n`);
+      process.stdout.write(`Applied migration ${version}\n`);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
