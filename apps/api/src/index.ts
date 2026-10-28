@@ -160,16 +160,21 @@ app.post("/api/v1/rounds", async (request, reply) => {
     const walletResult = await client.query("SELECT balance FROM wallets WHERE player_id = $1 FOR UPDATE", [playerId]);
     if (!walletResult.rowCount) { await client.query("ROLLBACK"); return reply.code(404).send({ error: "player_not_found" }); }
     const balance = Number(walletResult.rows[0]?.balance);
-    const existing = await client.query("SELECT id, mode, stake, payout, status FROM game_rounds WHERE player_id = $1 AND idempotency_key = $2", [playerId, idempotencyKey]);
+    const existing = await client.query("SELECT id, mode, stake, payout, status, outcome FROM game_rounds WHERE player_id = $1 AND idempotency_key = $2", [playerId, idempotencyKey]);
     if (existing.rowCount) {
       await client.query("COMMIT");
-      return { round: existing.rows[0], balance, idempotentReplay: true };
+      const row = existing.rows[0] as { id: string; mode: GameMode; stake: string | number; payout: string | number | null; status: string; outcome: Outcome | null };
+      return {
+        round: { ...row, stake: Number(row.stake), payout: Number(row.payout ?? 0), ...(row.outcome ? { outcome: row.outcome } : {}) },
+        balance,
+        idempotentReplay: true,
+      };
     }
     if (balance < body.stake) { await client.query("ROLLBACK"); return reply.code(409).send({ error: "insufficient_balance", balance }); }
     const balanceAfterStake = balance - body.stake;
     const balanceAfter = balanceAfterStake + payout;
     const roundId = randomUUID();
-    await client.query("INSERT INTO game_rounds (id, player_id, mode, stake, payout, status, idempotency_key, settled_at) VALUES ($1, $2, $3, $4, $5, 'settled', $6, now())", [roundId, playerId, body.mode, body.stake, payout, idempotencyKey]);
+    await client.query("INSERT INTO game_rounds (id, player_id, mode, stake, payout, status, idempotency_key, settled_at, outcome) VALUES ($1, $2, $3, $4, $5, 'settled', $6, now(), $7::jsonb)", [roundId, playerId, body.mode, body.stake, payout, idempotencyKey, JSON.stringify(outcome)]);
     await client.query("INSERT INTO wallet_ledger (player_id, round_id, amount, balance_after, reason, idempotency_key) VALUES ($1, $2, $3, $4, 'stake', $5)", [playerId, roundId, -body.stake, balanceAfterStake, `${roundId}:stake`]);
     if (payout > 0) await client.query("INSERT INTO wallet_ledger (player_id, round_id, amount, balance_after, reason, idempotency_key) VALUES ($1, $2, $3, $4, 'payout', $5)", [playerId, roundId, payout, balanceAfter, `${roundId}:payout`]);
     await client.query("UPDATE wallets SET balance = $2, updated_at = now() WHERE player_id = $1", [playerId, balanceAfter]);
