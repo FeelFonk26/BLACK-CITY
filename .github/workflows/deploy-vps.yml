@@ -92,5 +92,10 @@ jobs:
             cd "$APP_DIR"
             docker compose up -d --build
             docker compose ps
-            curl --fail --silent --show-error http://127.0.0.1:4000/health
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent --show-error http://127.0.0.1:4000/health; then exit 0; fi
+              sleep 2
+            done
+            docker compose logs --tail=100 api
+            exit 1
           '
