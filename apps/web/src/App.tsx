@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GameMode } from "@black-city/shared";
 
 const games: { mode: GameMode; title: string; subtitle: string; symbol: string }[] = [
@@ -80,6 +80,9 @@ export default function App() {
   const [rounds, setRounds] = useState(0);
   const [token, setToken] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const inFlight = useRef(false);
+  const pendingRound = useRef<{ signature: string; key: string } | null>(null);
   const apiBase = import.meta.env.VITE_API_URL?.endsWith("/") ? import.meta.env.VITE_API_URL.slice(0, -1) : import.meta.env.VITE_API_URL;
 
   useEffect(() => {
@@ -132,47 +135,62 @@ export default function App() {
   const canPlay = Number.isSafeInteger(numericStake) && numericStake >= 1 && numericStake <= 1000000 && numericStake <= balance && (!apiBase || (apiStatus === "online" && Boolean(token)));
 
   async function playRound() {
-    if (!canPlay) return;
+    if (!canPlay || inFlight.current) return;
+    inFlight.current = true;
+    setIsPlaying(true);
     setApiError(null);
-    if (apiBase) {
-      if (!token) {
-        setApiError("Гостевой аккаунт ещё подключается. Попробуй через секунду.");
+    try {
+      if (apiBase) {
+        if (!token) {
+          setApiError("Гостевой аккаунт ещё подключается. Попробуй через секунду.");
+          return;
+        }
+        const signature = JSON.stringify({ mode: active, stake: numericStake, coinSide });
+        if (!pendingRound.current || pendingRound.current.signature !== signature) {
+          pendingRound.current = { signature, key: crypto.randomUUID() };
+        }
+        try {
+          const response = await fetch(apiBase + "/api/v1/rounds", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + token,
+              "Idempotency-Key": pendingRound.current.key,
+            },
+            body: signature,
+          });
+          const data = await response.json() as {
+            error?: string;
+            message?: string;
+            balance?: number;
+            round?: { payout: number; outcome?: { headline: string; detail: string } };
+          };
+          if (!response.ok) {
+            if (response.status < 500) pendingRound.current = null;
+            throw new Error(data.error === "insufficient_balance" ? "Недостаточно виртуальных кредитов." : data.message ?? "Сервер не принял раунд.");
+          }
+          pendingRound.current = null;
+          if (typeof data.balance === "number") setBalance(data.balance);
+          const outcome = data.round?.outcome;
+          setResult({
+            headline: outcome?.headline ?? "Раунд уже обработан",
+            detail: outcome?.detail ?? "Повторный запрос не списал ставку повторно.",
+            payout: data.round?.payout ?? 0,
+          });
+          setRounds((current) => current + 1);
+        } catch (error) {
+          setApiError(error instanceof Error ? error.message : "Не удалось сыграть раунд.");
+        }
         return;
       }
-      try {
-        const response = await fetch(apiBase + "/api/v1/rounds", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token,
-            "Idempotency-Key": crypto.randomUUID(),
-          },
-          body: JSON.stringify({ mode: active, stake: numericStake, coinSide }),
-        });
-        const data = await response.json() as {
-          error?: string;
-          message?: string;
-          balance?: number;
-          round?: { payout: number; outcome?: { headline: string; detail: string } };
-        };
-        if (!response.ok) throw new Error(data.error === "insufficient_balance" ? "Недостаточно виртуальных кредитов." : data.message ?? "Сервер не принял раунд.");
-        if (typeof data.balance === "number") setBalance(data.balance);
-        const outcome = data.round?.outcome;
-        setResult({
-          headline: outcome?.headline ?? "Раунд уже обработан",
-          detail: outcome?.detail ?? "Повторный запрос не списал ставку повторно.",
-          payout: data.round?.payout ?? 0,
-        });
-        setRounds((current) => current + 1);
-      } catch (error) {
-        setApiError(error instanceof Error ? error.message : "Не удалось сыграть раунд.");
-      }
-      return;
+      const next = playDemoRound(active, numericStake, coinSide);
+      setBalance((current) => current - numericStake + next.payout);
+      setResult(next);
+      setRounds((current) => current + 1);
+    } finally {
+      inFlight.current = false;
+      setIsPlaying(false);
     }
-    const next = playDemoRound(active, numericStake, coinSide);
-    setBalance((current) => current - numericStake + next.payout);
-    setResult(next);
-    setRounds((current) => current + 1);
   }
 
   return (
@@ -195,7 +213,7 @@ export default function App() {
         <section className="game-panel" aria-live="polite">
           <div className="game-panel-heading"><div><p className="eyebrow">ДЕМО-РАУНД</p><h3>{selectedGame.symbol} {selectedGame.title}</h3><p>{selectedGame.subtitle}</p></div><span className="demo-label">{apiBase ? "ВИРТУАЛЬНЫЕ КРЕДИТЫ · API" : "ЛОКАЛЬНОЕ ДЕМО"}</span></div>
           {active === "COINFLIP" && <div className="coin-choice"><span>Выбери сторону</span>{(["Орёл", "Решка"] as const).map((side) => <button key={side} type="button" className={coinSide === side ? "choice-active" : ""} onClick={() => { setCoinSide(side); setResult(null); }}>{side}</button>)}</div>}
-          <div className="game-controls"><label htmlFor="stake">Ставка</label><input id="stake" type="number" min="1" max="1000000" step="1" value={stake} onChange={(event) => { setStake(event.target.value); setResult(null); }} /><div className="quick-stakes">{[100, 500, 1000].map((value) => <button key={value} type="button" onClick={() => { setStake(String(value)); setResult(null); }}>{value.toLocaleString("ru-RU")}</button>)}</div><button className="play-button" type="button" onClick={playRound} disabled={!canPlay}>ИГРАТЬ <span>→</span></button></div>
+          <div className="game-controls"><label htmlFor="stake">Ставка</label><input id="stake" type="number" min="1" max="1000000" step="1" value={stake} onChange={(event) => { setStake(event.target.value); setResult(null); }} /><div className="quick-stakes">{[100, 500, 1000].map((value) => <button key={value} type="button" onClick={() => { setStake(String(value)); setResult(null); }}>{value.toLocaleString("ru-RU")}</button>)}</div><button className="play-button" type="button" onClick={playRound} disabled={!canPlay || isPlaying}>{isPlaying ? "ОБРАБОТКА…" : "ИГРАТЬ"} <span>→</span></button></div>
           {!canPlay && <p className="validation-note">{numericStake > balance ? "Недостаточно виртуальных кредитов." : apiBase && apiStatus !== "online" ? "Ожидание подключения к игровому серверу." : "Введи целую ставку от 1 до 1 000 000."}</p>}
           {apiError && <p className="validation-note">{apiError}</p>}
           {result && <div className={"round-result " + (result.payout > numericStake ? "result-win" : "result-loss")}><strong>{result.headline}</strong><span>{result.detail}</span><div><span>Выплата</span><b>{result.payout.toLocaleString("ru-RU")} кредитов</b><span>Изменение баланса: {result.payout - numericStake > 0 ? "+" : ""}{(result.payout - numericStake).toLocaleString("ru-RU")}</span></div></div>}
