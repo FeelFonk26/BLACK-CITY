@@ -1,27 +1,20 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import Fastify from "fastify";
+import { describe, expect, it } from "vitest";
+import { assertValidStake, MAX_STAKE, MIN_STAKE } from "@black-city/shared";
 
-describe("API health route", () => {
-  const app = Fastify();
-
-  beforeAll(async () => {
-    app.get("/health", async () => ({
-      status: "ok",
-      service: "black-city-api",
-      version: "0.1.0",
-    }));
-    await app.ready();
+describe("virtual-credit stake validation", () => {
+  it("accepts the minimum and maximum allowed stakes", () => {
+    expect(() => assertValidStake(MIN_STAKE)).not.toThrow();
+    expect(() => assertValidStake(MAX_STAKE)).not.toThrow();
   });
 
-  afterAll(async () => app.close());
-
-  it("returns health status without secrets", async () => {
-    const response = await app.inject({ method: "GET", url: "/health" });
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      status: "ok",
-      service: "black-city-api",
-      version: "0.1.0",
-    });
+  it("accepts a valid integer stake", () => {
+    expect(() => assertValidStake(250)).not.toThrow();
   });
+
+  it.each([0, -1, 1.5, MAX_STAKE + 1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid stake %s",
+    (stake) => {
+      expect(() => assertValidStake(stake)).toThrow(RangeError);
+    },
+  );
 });
