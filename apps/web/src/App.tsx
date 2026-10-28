@@ -67,6 +67,7 @@ function playDemoRound(mode: GameMode, stake: number, coinSide: "Орёл" | "Р
       return same ? win(reels.join(" "), "Три одинаковых символа!", 5) : pair ? win(reels.join(" "), "Два символа совпали.", 1.5) : lose(reels.join(" "), "Комбинация не принесла выплату.");
     }
   }
+  throw new Error("Unsupported game mode");
 }
 
 export default function App() {
