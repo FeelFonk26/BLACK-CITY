@@ -4,6 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { randomInt, randomUUID } from "node:crypto";
 import pg from "pg";
+import { serializeStoredRound, type StoredRoundRow } from "./round-response.js";
 import { assertValidStake, INITIAL_BALANCE, MAX_STAKE, MIN_STAKE, type GameMode } from "@black-city/shared";
 
 const { Pool } = pg;
@@ -163,12 +164,8 @@ app.post("/api/v1/rounds", async (request, reply) => {
     const existing = await client.query("SELECT id, mode, stake, payout, status, outcome FROM game_rounds WHERE player_id = $1 AND idempotency_key = $2", [playerId, idempotencyKey]);
     if (existing.rowCount) {
       await client.query("COMMIT");
-      const row = existing.rows[0] as { id: string; mode: GameMode; stake: string | number; payout: string | number | null; status: string; outcome: Outcome | null };
-      return {
-        round: { ...row, stake: Number(row.stake), payout: Number(row.payout ?? 0), ...(row.outcome ? { outcome: row.outcome } : {}) },
-        balance,
-        idempotentReplay: true,
-      };
+      const row = existing.rows[0] as StoredRoundRow;
+      return { round: serializeStoredRound(row), balance, idempotentReplay: true };
     }
     if (balance < body.stake) { await client.query("ROLLBACK"); return reply.code(409).send({ error: "insufficient_balance", balance }); }
     const balanceAfterStake = balance - body.stake;
