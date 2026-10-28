@@ -1,5 +1,6 @@
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { randomInt, randomUUID } from "node:crypto";
 import pg from "pg";
@@ -20,6 +21,7 @@ const app = Fastify({ logger: true, bodyLimit: 16 * 1024 });
 
 await app.register(cors, { origin: allowedOrigins, methods: ["GET", "POST"], allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"] });
 await app.register(jwt, { secret: jwtSecret });
+await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
 
 type AuthUser = { sub: string };
 type PlayBody = { mode?: unknown; stake?: unknown; coinSide?: unknown; autoCashout?: unknown };
@@ -102,7 +104,7 @@ app.get("/health", async (_request, reply) => {
 
 app.get("/api/v1/games", async () => ({ modes, currency: "virtual-credits", realMoneyEnabled: false, backend: "server-authoritative" }));
 
-app.post("/api/v1/guest", async (_request, reply) => {
+app.post("/api/v1/guest", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (_request, reply) => {
   const client = await pool.connect();
   const playerId = randomUUID();
   const externalId = randomUUID();
