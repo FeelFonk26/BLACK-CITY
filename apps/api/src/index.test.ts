@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { assertValidStake, MAX_STAKE, MIN_STAKE } from "@black-city/shared";
 import { serializeStoredRound } from "./round-response.js";
+import { createRoundRequestFingerprint } from "./round-fingerprint.js";
 
 describe("virtual-credit stake validation", () => {
   it("accepts the minimum and maximum allowed stakes", () => {
@@ -48,5 +49,25 @@ describe("idempotent round response serialization", () => {
       status: "settled",
       outcome: null,
     })).toEqual({ id: "round-old", mode: "DICE", stake: 100, payout: 0, status: "settled" });
+  });
+});
+
+describe("round request fingerprints", () => {
+  it("is stable for the same normalized round request", () => {
+    const input = { mode: "DICE", stake: 250 };
+    expect(createRoundRequestFingerprint(input)).toBe(createRoundRequestFingerprint(input));
+  });
+
+  it("distinguishes different modes and stakes", () => {
+    const base = { mode: "DICE", stake: 250 };
+    expect(createRoundRequestFingerprint(base)).not.toBe(createRoundRequestFingerprint({ ...base, stake: 500 }));
+    expect(createRoundRequestFingerprint(base)).not.toBe(createRoundRequestFingerprint({ ...base, mode: "LUCKY" }));
+  });
+
+  it("includes coin side and normalized crash auto-cashout", () => {
+    expect(createRoundRequestFingerprint({ mode: "COINFLIP", stake: 250, coinSide: "Орёл" }))
+      .not.toBe(createRoundRequestFingerprint({ mode: "COINFLIP", stake: 250, coinSide: "Решка" }));
+    expect(createRoundRequestFingerprint({ mode: "CRASH", stake: 250, autoCashout: 20 }))
+      .toBe(createRoundRequestFingerprint({ mode: "CRASH", stake: 250, autoCashout: 10 }));
   });
 });
